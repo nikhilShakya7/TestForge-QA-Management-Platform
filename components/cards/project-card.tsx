@@ -11,6 +11,7 @@ import {
   Pencil,
   Archive,
   RotateCcw,
+  Users,
 } from "lucide-react";
 
 import StatusBadge from "@/components/cards/status-badge";
@@ -29,6 +30,8 @@ type ProjectCardProps = {
   onOpen: () => void;
   onEdit: () => void;
   onArchive: () => void;
+  onManageMembers: () => void;
+  canManageMembers: boolean;
 };
 
 export default function ProjectCard({
@@ -36,6 +39,8 @@ export default function ProjectCard({
   onOpen,
   onEdit,
   onArchive,
+  onManageMembers,
+  canManageMembers,
 }: ProjectCardProps) {
   const metrics = [
     {
@@ -175,6 +180,18 @@ export default function ProjectCard({
               <Pencil size={16} />
             )}
           </button>
+
+          {canManageMembers && (
+            <button
+              type="button"
+              onClick={onManageMembers}
+              title="Manage project members"
+              aria-label="Manage project members"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+            >
+              <Users size={16} />
+            </button>
+          )}
 
           {project.status !== "ARCHIVED" && (
             <button

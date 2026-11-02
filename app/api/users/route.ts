@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   getActiveSessionUser,
@@ -53,6 +54,18 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("GET /api/users error:", error);
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2021" || error.code === "P2022")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "The database schema is out of date. Run `npm run db:push` against the configured database, then try again.",
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });
   }
 }

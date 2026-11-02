@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { getActiveSessionUser, getWriteAccessError } from "@/lib/auth";
+import {
+  canAccessProject,
+  getActiveSessionUser,
+  getWriteAccessError,
+} from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
 const updateProjectSchema = z.object({
@@ -49,10 +53,9 @@ export async function GET(
       );
     }
 
-    // Only the creator can view the project
-    if (project.createdById !== session.userId) {
+    if (!(await canAccessProject(session, id))) {
       return NextResponse.json(
-        { error: "Not authorized to view this project" },
+        { error: "You do not have access to this project" },
         { status: 403 }
       );
     }

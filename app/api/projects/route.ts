@@ -1,10 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import {
-  getActiveSessionUser,
-  getCurrentUser,
-  getWriteAccessError,
-} from "@/lib/auth";
+import { getActiveSessionUser, getCurrentUser, getWriteAccessError } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
 const projectSchema = z.object({
@@ -65,9 +61,15 @@ export async function GET(request: NextRequest) {
       pageSize = "20",
     } = parsed.data;
 
-    const where: Record<string, unknown> = {
-      createdById: session.userId,
-    };
+    const where: Record<string, unknown> =
+      session.role === "SUPER_ADMIN"
+        ? {}
+        : {
+            OR: [
+              { createdById: session.userId },
+              { projectMembers: { some: { userId: session.userId } } },
+            ],
+          };
 
     if (search) {
       where.OR = [
@@ -108,7 +110,6 @@ export async function GET(request: NextRequest) {
     const testRuns = projectIds.length
       ? await prisma.testRun.findMany({
           where: {
-            createdById: session.userId,
             projectId: { in: projectIds },
           },
           select: { id: true, projectId: true },
@@ -172,6 +173,8 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/projects
  * Create a new project.
+ * Only SUPER_ADMIN and PROJECT_ADMIN can create projects.
+ * QA_TESTER and VIEWER cannot create projects.
  */
 export async function POST(request: NextRequest) {
   try {

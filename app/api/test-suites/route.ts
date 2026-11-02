@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
   getActiveSessionUser,
   getCurrentUser,
+  getAccessibleProjectIds,
+  canAccessProject,
   getWriteAccessError,
 } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -25,11 +27,22 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get("projectId") || undefined;
+    if (projectId && !(await canAccessProject(session, projectId))) {
+      return NextResponse.json(
+        { error: "You do not have access to this project" },
+        { status: 403 }
+      );
+    }
+
+    const accessibleProjectIds = await getAccessibleProjectIds(session);
 
     const testSuites = await prisma.testSuite.findMany({
       relationLoadStrategy: "join",
       where: {
-        createdById: session.userId,
+        OR: [
+          { createdById: session.userId },
+          { projectId: { in: accessibleProjectIds } },
+        ],
         ...(projectId ? { projectId } : {}),
       },
       include: {

@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { getActiveSessionUser, getWriteAccessError } from "@/lib/auth";
+import {
+  canAccessProject,
+  getActiveSessionUser,
+  getWriteAccessError,
+} from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
 const updateTestSuiteSchema = z.object({
@@ -42,10 +46,13 @@ export async function GET(
       );
     }
 
-    // Only the creator can view the suite
-    if (testSuite.createdById !== session.userId) {
+    if (
+      testSuite.projectId
+        ? !(await canAccessProject(session, testSuite.projectId))
+        : testSuite.createdById !== session.userId
+    ) {
       return NextResponse.json(
-        { error: "Not authorized to view this test suite" },
+        { error: "You do not have access to this test suite" },
         { status: 403 }
       );
     }

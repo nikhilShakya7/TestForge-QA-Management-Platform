@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { getActiveSessionUser, getWriteAccessError } from "@/lib/auth";
+import {
+  canAccessProject,
+  getActiveSessionUser,
+  getWriteAccessError,
+} from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
 const updateTestCaseSchema = z.object({
@@ -106,7 +110,7 @@ export async function GET(
     const { id } = await params;
 
     const testCase = await prisma.testCase.findUnique({
-      where: { id, createdById: session.userId },
+      where: { id },
       include: {
         suite: { select: { id: true, name: true } },
         project: { select: { id: true, name: true, key: true } },
@@ -124,6 +128,17 @@ export async function GET(
       return NextResponse.json(
         { error: `Test case "${id}" not found` },
         { status: 404 }
+      );
+    }
+
+    if (
+      testCase.projectId
+        ? !(await canAccessProject(session, testCase.projectId))
+        : testCase.createdById !== session.userId
+    ) {
+      return NextResponse.json(
+        { error: "You do not have access to this test case" },
+        { status: 403 }
       );
     }
 

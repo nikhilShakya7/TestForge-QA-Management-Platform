@@ -160,8 +160,7 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
-    const writeError = getWriteAccessError(session);
-    if (writeError) return writeError;
+    
 
     const [existing, suite, user] = await Promise.all([
       prisma.testCase.findUnique({

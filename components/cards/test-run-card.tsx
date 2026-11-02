@@ -42,9 +42,9 @@ export default function TestRunCard({
     run.suite?._count?.testCases ??
     run.project?._count?.testCases ??
     executions;
-  const passed = results.passed;
-  const failed = results.failed;
-  const blocked = results.blocked;
+  const passed = results?.passed ?? 0;
+  const failed = results?.failed ?? 0;
+  const blocked = results?.blocked ?? 0;
   const notRun = Math.max(totalCases - passed - failed - blocked, 0);
   const statusLabel =
     run.status === "Planned"

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import ProjectCard from "@/components/cards/project-card";
 import ConfirmDialog from "@/components/dialogs/ConfirmDialog";
+import { X } from "lucide-react";
 
 type Project = {
   id: string;
@@ -28,6 +29,22 @@ type ProjectResponse = {
   };
 };
 
+type ProjectMember = {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+  projectRole: string;
+  joinedAt: string;
+};
+
+type AvailableUser = {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+};
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,7 +55,30 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
 
-  const statuses = ["ACTIVE", "ARCHIVED"];
+  
+
+  // Check user role
+  const [user, setUser] = useState<{ role: string; name: string | null; email: string } | null>(null);
+
+  useEffect(() => {
+    async function fetchCurrentUser() {
+      try {
+        const res = await fetch("/api/auth/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUser({ role: data.user.role, name: data.user.name, email: data.user.email });
+        }
+      } catch (error) {
+        console.error("Failed to check user role:", error);
+      }
+    }
+    fetchCurrentUser();
+  }, []);
+
+const statuses = ["ACTIVE", "ARCHIVED"];
 
   // Create form state
   const [creating, setCreating] = useState(false);
@@ -74,6 +114,16 @@ export default function ProjectsPage() {
   const [creatingSubmitting, setCreatingSubmitting] = useState(false);
   const [editingSubmitting, setEditingSubmitting] = useState(false);
   const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [memberProject, setMemberProject] = useState<Project | null>(null);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedProjectRole, setSelectedProjectRole] = useState("QA_TESTER");
+  const [canAssignProjectAdmin, setCanAssignProjectAdmin] = useState(false);
+  const [memberLoading, setMemberLoading] = useState(false);
+  const [memberSubmitting, setMemberSubmitting] = useState(false);
+  const [memberError, setMemberError] = useState<string | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<{
     id: string;
     name: string;
@@ -112,8 +162,93 @@ export default function ProjectsPage() {
   }, [search, filterStatus]);
 
   useEffect(() => {
+    let active = true;
+
+    async function fetchCurrentUser() {
+      try {
+        const response = await fetch("/api/auth/me", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const body = await response.json();
+        if (active) setUserRole(body.user.role);
+      } catch (fetchError) {
+        console.error("Failed to load current user role:", fetchError);
+      }
+    }
+
+    void fetchCurrentUser();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
+
+  const openMembers = async (project: Project) => {
+    setMemberProject(project);
+    setMemberLoading(true);
+    setMemberError(null);
+    setMembers([]);
+    setAvailableUsers([]);
+
+    try {
+      const response = await fetch(`/api/projects/${project.id}/members`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Failed to load project members");
+      setMembers(body.members);
+      setAvailableUsers(body.availableUsers);
+      setCanAssignProjectAdmin(body.canAssignProjectAdmin);
+    } catch (fetchError) {
+      setMemberError(
+        fetchError instanceof Error ? fetchError.message : "Failed to load project members"
+      );
+    } finally {
+      setMemberLoading(false);
+    }
+  };
+
+  const addProjectMember = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!memberProject || !selectedUserId) return;
+    setMemberSubmitting(true);
+    setMemberError(null);
+
+    try {
+      const response = await fetch(`/api/projects/${memberProject.id}/members`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: selectedUserId,
+          role: selectedProjectRole,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Failed to add project member");
+
+      setMembers((current) => [
+        ...current.filter((member) => member.id !== body.member.id),
+        body.member,
+      ]);
+      setAvailableUsers((current) =>
+        current.filter((candidate) => candidate.id !== body.member.id)
+      );
+      setSelectedUserId("");
+    } catch (submitError) {
+      setMemberError(
+        submitError instanceof Error ? submitError.message : "Failed to add project member"
+      );
+    } finally {
+      setMemberSubmitting(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -242,6 +377,8 @@ export default function ProjectsPage() {
     localStorage.setItem("testforge_projectId", project.id);
     window.location.href = `/test-cases?projectId=${encodeURIComponent(project.id)}`;
   };
+  const canManageMembers =
+    userRole === "SUPER_ADMIN" || userRole === "PROJECT_ADMIN";
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -259,7 +396,7 @@ export default function ProjectsPage() {
             onClick={() => setCreating(!creating)}
             className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
           >
-            {creating ? "Cancel" : "+ New Project"}
+            {user?.role !== "QA_TESTER" && user?.role !== "VIEWER" ? (creating ? "Cancel" : "+ New Project") : "Manage projects"}
           </button>
         </header>
 
@@ -412,6 +549,8 @@ export default function ProjectsPage() {
                 onOpen={() => openProject(project)}
                 onEdit={() => openEdit(project)}
                 onArchive={() => void handleArchive(project.id, project.name)}
+                onManageMembers={() => void openMembers(project)}
+                canManageMembers={canManageMembers}
               />
             ))}
           </div>
@@ -427,6 +566,124 @@ export default function ProjectsPage() {
           TestForge · QA Management Platform
         </p>
       </section>
+      {memberProject && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setMemberProject(null);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="project-members-title"
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+          >
+            <header className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="project-members-title" className="text-lg font-semibold">
+                  Project members
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {memberProject.name} · {memberProject.key}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMemberProject(null)}
+                aria-label="Close project members"
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+              >
+                <X size={18} />
+              </button>
+            </header>
+
+            {memberError && (
+              <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {memberError}
+              </p>
+            )}
+
+            {memberLoading ? (
+              <p className="mt-5 text-sm text-slate-500">Loading project members…</p>
+            ) : (
+              <>
+                <form onSubmit={addProjectMember} className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+                  <label className="text-sm font-medium text-slate-700">
+                    Existing user
+                    <select
+                      required
+                      value={selectedUserId}
+                      onChange={(event) => setSelectedUserId(event.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                    >
+                      <option value="">Select a user</option>
+                      {availableUsers.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.name ? `${candidate.name} · ` : ""}{candidate.email}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Project role
+                    <select
+                      value={selectedProjectRole}
+                      onChange={(event) => setSelectedProjectRole(event.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                    >
+                      {canAssignProjectAdmin && (
+                        <option value="PROJECT_ADMIN">Project Admin</option>
+                      )}
+                      <option value="QA_TESTER">QA Tester</option>
+                      <option value="VIEWER">Viewer</option>
+                    </select>
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={memberSubmitting || !availableUsers.length}
+                    className="self-end rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {memberSubmitting ? "Adding…" : "Add member"}
+                  </button>
+                </form>
+
+                {availableUsers.length === 0 && (
+                  <p className="mt-3 text-xs text-slate-500">
+                    There are no other active users available to add.
+                  </p>
+                )}
+
+                <div className="mt-6">
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    Current members ({members.length})
+                  </h3>
+                  {members.length ? (
+                    <ul className="mt-3 divide-y divide-slate-100">
+                      {members.map((member) => (
+                        <li key={member.id} className="flex items-center justify-between gap-3 py-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-slate-800">
+                              {member.name || member.email}
+                            </p>
+                            <p className="truncate text-xs text-slate-500">{member.email}</p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                            {member.projectRole.replaceAll("_", " ")}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-500">No members added yet.</p>
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      )}
       <ConfirmDialog
         isOpen={archiveTarget !== null}
         onConfirm={() => void confirmArchive()}

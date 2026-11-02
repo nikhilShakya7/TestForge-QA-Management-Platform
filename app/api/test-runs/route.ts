@@ -1,10 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import {
-  getActiveSessionUser,
-  getCurrentUser,
-  getWriteAccessError,
-} from "@/lib/auth";
+import { getActiveSessionUser } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
 const testRunSchema = z.object({
@@ -39,7 +35,6 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             name: true,
-            _count: { select: { testCases: true } },
           },
         },
         project: {
@@ -105,8 +100,6 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
-    const writeError = getWriteAccessError(session);
-    if (writeError) return writeError;
 
     const body = await request.json();
     const parsed = testRunSchema.safeParse(body);
@@ -117,41 +110,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [user, suite] = await Promise.all([
-      getCurrentUser(session.userId),
-      parsed.data.suiteId
-        ? prisma.testSuite.findUnique({
-            where: { id: parsed.data.suiteId },
-          })
-        : Promise.resolve(null),
-    ]);
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    if (parsed.data.suiteId && !suite) {
-      return NextResponse.json(
-        { error: `Test suite "${parsed.data.suiteId}" not found` },
-        { status: 404 }
-      );
-    }
-
+    // Create the test run - allow all authenticated users (SUPER_ADMIN, PROJECT_ADMIN, QA_TESTER, VIEWER)
     const testRun = await prisma.testRun.create({
       data: {
         name: parsed.data.name,
         description: parsed.data.description,
-        status: "Planned",
-        suiteId: parsed.data.suiteId ?? null,
+        suiteId: parsed.data.suiteId,
         projectId: parsed.data.projectId,
-        createdById: user.id,
+        createdById: session.userId,
       },
       include: {
-        suite: { select: { id: true, name: true } },
+        suite: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        project: {
+          select: {
+            _count: { select: { testCases: true } },
+          },
+        },
         createdBy: { select: { id: true, name: true, email: true } },
+        _count: { select: { executions: true } },
+        executions: {
+          select: {
+            status: true,
+            executedAt: true,
+          },
+        },
       },
     });
 
-    return NextResponse.json(testRun, { status: 201 });
+    return NextResponse.json(testRun);
   } catch (error) {
     console.error("POST /api/test-runs error:", error);
     return NextResponse.json({ error: "Failed to create test run" }, { status: 500 });

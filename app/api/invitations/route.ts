@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
@@ -76,6 +77,18 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("POST /api/invitations error:", error);
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2021" || error.code === "P2022")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "The database schema is out of date. Run `npm run db:push` against the configured database, then try again.",
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "Failed to create invitation" }, { status: 500 });
   }
 }

@@ -208,6 +208,22 @@ export function isSuperAdmin(user: SessionUser): boolean {
   return user.role === "SUPER_ADMIN";
 }
 
+export async function getAccessibleProjectIds(user: SessionUser): Promise<string[]> {
+  const projects = await prisma.project.findMany({
+    where: isSuperAdmin(user)
+      ? {}
+      : {
+          OR: [
+            { createdById: user.userId },
+            { projectMembers: { some: { userId: user.userId } } },
+          ],
+        },
+    select: { id: true },
+  });
+
+  return projects.map((project) => project.id);
+}
+
 /**
  * Check if a user can manage a project.
  * SUPER_ADMIN can manage all projects.
