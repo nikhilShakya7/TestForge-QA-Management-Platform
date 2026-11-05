@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { getActiveSessionUser, getWriteAccessError } from "@/lib/auth";
+import {
+  canAccessProject,
+  getActiveSessionUser,
+  getWriteAccessError,
+} from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
 const updateTestRunSchema = z.object({
@@ -27,7 +31,7 @@ export async function GET(
 
     const testRun = await prisma.testRun.findUnique({
       relationLoadStrategy: "join",
-      where: { id, createdById: session.userId },
+      where: { id },
       include: {
         suite: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true, email: true } },
@@ -52,6 +56,17 @@ export async function GET(
       return NextResponse.json(
         { error: `Test run "${id}" not found` },
         { status: 404 }
+      );
+    }
+
+    if (
+      testRun.projectId
+        ? !(await canAccessProject(session, testRun.projectId))
+        : testRun.createdById !== session.userId
+    ) {
+      return NextResponse.json(
+        { error: "You do not have access to this test run" },
+        { status: 403 }
       );
     }
 
@@ -150,13 +165,18 @@ export async function DELETE(
 
     const { id } = await params;
 
-    const deletedRunName = await prisma.$transaction(async (transaction) => {
+    const deletedRun = await prisma.$transaction(async (transaction) => {
       const existing = await transaction.testRun.findUnique({
-        where: { id, createdById: session.userId },
-        select: { name: true },
+        where: { id },
+        select: { name: true, projectId: true, createdById: true },
       });
 
       if (!existing) return null;
+
+      const hasProjectAccess = existing.projectId
+        ? await canAccessProject(session, existing.projectId)
+        : existing.createdById === session.userId;
+      if (!hasProjectAccess) return false;
 
       await transaction.testExecutionHistory.deleteMany({
         where: { testExecution: { testRunId: id } },
@@ -167,10 +187,16 @@ export async function DELETE(
       return existing.name;
     });
 
-    if (deletedRunName === null) {
+    if (deletedRun === null) {
       return NextResponse.json(
         { error: `Test run "${id}" not found` },
         { status: 404 }
+      );
+    }
+    if (deletedRun === false) {
+      return NextResponse.json(
+        { error: "You do not have access to delete this test run" },
+        { status: 403 }
       );
     }
 

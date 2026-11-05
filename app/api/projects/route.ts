@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { getActiveSessionUser, getCurrentUser, getWriteAccessError } from "@/lib/auth";
+import {
+  getActiveSessionUser,
+  getCurrentUser,
+  getProjectCreationError,
+} from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
 const projectSchema = z.object({
@@ -185,8 +189,8 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
-    const writeError = getWriteAccessError(session);
-    if (writeError) return writeError;
+    const creationError = getProjectCreationError(session);
+    if (creationError) return creationError;
 
     const body = await request.json();
     const parsed = projectSchema.safeParse(body);

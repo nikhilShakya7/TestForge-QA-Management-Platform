@@ -313,11 +313,19 @@ export async function canInviteToProject(
 }
 
 /**
- * Get error response if user doesn't have write access to create projects.
- * Returns null if user has access, or an error response if not.
+ * Get error response when a read-only Viewer attempts to make a change.
  */
 export function getWriteAccessError(session: SessionUser): NextResponse | null {
-  // Only SUPER_ADMIN and PROJECT_ADMIN can create projects
+  if (session.role === "VIEWER") {
+    return NextResponse.json(
+      { error: "Viewer accounts have read-only access." },
+      { status: 403 }
+    );
+  }
+  return null;
+}
+
+export function getProjectCreationError(session: SessionUser): NextResponse | null {
   if (session.role !== "SUPER_ADMIN" && session.role !== "PROJECT_ADMIN") {
     return NextResponse.json(
       { error: "You do not have permission to create projects" },

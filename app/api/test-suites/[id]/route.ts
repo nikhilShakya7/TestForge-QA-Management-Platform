@@ -195,10 +195,12 @@ export async function DELETE(
       );
     }
 
-    // Only the creator can delete
-    if (existing.createdById !== session.userId) {
+    const hasProjectAccess = existing.projectId
+      ? await canAccessProject(session, existing.projectId)
+      : existing.createdById === session.userId;
+    if (!hasProjectAccess) {
       return NextResponse.json(
-        { error: "Not authorized to delete this test suite" },
+        { error: "You do not have access to delete this test suite" },
         { status: 403 }
       );
     }

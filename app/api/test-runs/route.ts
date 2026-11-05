@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { getActiveSessionUser } from "@/lib/auth";
+import { getActiveSessionUser, getAccessibleProjectIds, canAccessProject } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
 const testRunSchema = z.object({
@@ -21,11 +21,22 @@ export async function GET(request: NextRequest) {
     const suiteId = searchParams.get("suiteId") || undefined;
     const status = searchParams.get("status") || undefined;
     const projectId = searchParams.get("projectId") || undefined;
+    if (projectId && !(await canAccessProject(session, projectId))) {
+      return NextResponse.json(
+        { error: "You do not have access to this project" },
+        { status: 403 }
+      );
+    }
+
+    const accessibleProjectIds = await getAccessibleProjectIds(session);
 
     const testRuns = await prisma.testRun.findMany({
       relationLoadStrategy: "join",
       where: {
-        createdById: session.userId,
+        OR: [
+          { createdById: session.userId },
+          { projectId: { in: accessibleProjectIds } },
+        ],
         ...(projectId ? { projectId } : {}),
         ...(suiteId ? { suiteId } : {}),
         ...(status ? { status } : {}),
