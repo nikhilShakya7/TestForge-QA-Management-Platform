@@ -5,6 +5,7 @@ import {
   getCurrentUser,
   getAccessibleProjectIds,
   canAccessProject,
+  getWriteAccessError,
 } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
@@ -81,6 +82,8 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+    const writeError = getWriteAccessError(session);
+    if (writeError) return writeError;
 
     const user = await getCurrentUser(session.userId);
     if (!user) {

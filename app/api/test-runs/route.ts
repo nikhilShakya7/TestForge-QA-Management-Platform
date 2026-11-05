@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { getActiveSessionUser, getAccessibleProjectIds, canAccessProject } from "@/lib/auth";
+import {
+  canAccessProject,
+  getActiveSessionUser,
+  getAccessibleProjectIds,
+  getWriteAccessError,
+} from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
 const testRunSchema = z.object({
@@ -111,6 +116,8 @@ export async function POST(request: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
+    const writeError = getWriteAccessError(session);
+    if (writeError) return writeError;
 
     const body = await request.json();
     const parsed = testRunSchema.safeParse(body);
@@ -121,7 +128,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the test run - allow all authenticated users (SUPER_ADMIN, PROJECT_ADMIN, QA_TESTER, VIEWER)
     const testRun = await prisma.testRun.create({
       data: {
         name: parsed.data.name,

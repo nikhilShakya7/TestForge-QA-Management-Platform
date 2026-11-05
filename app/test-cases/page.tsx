@@ -363,13 +363,13 @@ export default function TestCasesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: editFormData?.title,
-          description: editFormData?.description || undefined,
-          preconditions: editFormData?.preconditions || undefined,
+          description: editFormData?.description || null,
+          preconditions: editFormData?.preconditions || null,
           steps: editFormData?.steps,
           expectedResult: editFormData?.expectedResult,
           priority: editFormData?.priority,
           status: editFormData?.status,
-          suiteId: editFormData?.suiteId || undefined,
+          suiteId: editFormData?.suiteId || null,
           projectId: editFormData?.projectId || undefined,
         }),
       });

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   canManageProject,
   getActiveSessionUser,
+  getWriteAccessError,
   isSuperAdmin,
   normalizeUserRole,
 } from "@/lib/auth";
@@ -22,7 +23,6 @@ export async function GET(
     if (!actor) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
-
     const { id: projectId } = await params;
     if (!(await canManageProject(actor, projectId))) {
       return NextResponse.json({ error: "Project admin access required" }, { status: 403 });
@@ -87,6 +87,8 @@ export async function POST(
     if (!actor) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
+    const writeError = getWriteAccessError(actor);
+    if (writeError) return writeError;
 
     const { id: projectId } = await params;
     if (!(await canManageProject(actor, projectId))) {
